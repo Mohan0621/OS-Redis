@@ -66,10 +66,9 @@ public class RedisServer{
     each resp ends with \r\n  uses crlf carraige return and line feed
     \r=carriage return
     \n=line feed
- */
+ 
 
 // RESP Parser
-
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -99,9 +98,86 @@ public class RedisServer {
         serverSocket.close();
     }
 }
+*
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.ServerSocket;
+import java.net.Server;
+
+public class RedisServer{
+    public static void main(String[] args){
+        SeverSocket serverSocket = new ServerScoket(6379);
+        RedisDatabase database =new RedisDatabase();
+        CommandHandler handler=new CommandHandler();
+        System.out.println("Redis server Started on port 6379");
+        RespParser praser=new RespParser(scoket,getInputStream());
+        String[] command =parser.readCommand();
+        String response =handler.execute(command);
+        System.out.println("Response : "+response);
+        socket.close();
+        serverSocket.close();
+    }
 
 
+}
+*/
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
 
+public class RedisServer {
 
+    public static void main(String[] args) throws IOException {
 
+        ServerSocket serverSocket = new ServerSocket(6379);
+
+        RedisDatabase database = new RedisDatabase();
+        CommandHandler handler = new CommandHandler(database);
+
+        System.out.println("Redis server started on port 6379");
+
+        while (true) {
+
+            Socket clientSocket = serverSocket.accept();
+
+            System.out.println("Client connected!");
+
+            RespParser parser =
+                    new RespParser(clientSocket.getInputStream());
+
+            RespWriter writer =
+                    new RespWriter(clientSocket.getOutputStream());
+
+            while (true) {
+
+                String[] command = parser.readCommand();
+
+                if (command == null) {
+                    break;
+                }
+
+                String response = handler.execute(command);
+
+                if (command[0].equalsIgnoreCase("SET")) {
+                    writer.writeSimpleString(response);
+                }
+                else if (command[0].equalsIgnoreCase("GET")) {
+                    writer.writeBulkString(
+                            response.equals("(nil)") ? null : response
+                    );
+                }
+                else if (command[0].equalsIgnoreCase("DEL")) {
+                    writer.writeInteger(Integer.parseInt(response));
+                }
+                else {
+                    writer.writeError(response);
+                }
+            }
+
+            clientSocket.close();
+        }
+    }
+}
