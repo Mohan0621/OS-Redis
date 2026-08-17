@@ -121,8 +121,7 @@ public class RedisServer{
 
 
 }
-*/
-
+*
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.ServerSocket;
@@ -180,4 +179,31 @@ public class RedisServer {
             clientSocket.close();
         }
     }
+}*/
+
+import java.io.IOException;
+import java.net.ServerScoket;
+import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+public class RedisServer{
+    public static void main(String[] args) throw IOException{
+        ServerScoket serverSocket=new SeverSocket(6379);
+        RedisDatabase database = new RedisDatabase();
+        CommandHandler commandHandler =new CommandHandler(database);
+        ExecutorService executor=Executors.newFixedThreadPool(4);
+        System,out.println("Redis Server is at 6379");
+
+        while(true){
+            Socket clientSocket=serverSocket.accept();
+            System.out.println("Client connected!");
+            RedisClientHandler clientHandler = new RedisClientHandler(clientSocket,commandHandler);
+            executor.execute(clientHandler);//submit method used when we need to send the result to client since we dont need that we will use execute method
+            clientHandler.start();
+        }
+    }
 }
+
+
+
+

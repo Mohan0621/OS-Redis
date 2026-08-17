@@ -1,9 +1,9 @@
-import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 
 public class RedisDatabase {
 
-    private final Map<String, String> data = new HashMap<>();
+    private final Map<String, String> data = new ConcurrentHashMap<>();
 
     public void set(String key, String value) {
         data.put(key, value);
