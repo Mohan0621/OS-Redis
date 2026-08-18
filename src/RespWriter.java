@@ -3,6 +3,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 public class RespWriter {
+
     private final OutputStream output;
 
     public RespWriter(OutputStream output) {
@@ -10,29 +11,55 @@ public class RespWriter {
     }
 
     public void writeSimpleString(String value) throws IOException {
-        write("+" + value + "\r\n");
+        writeRaw("+" + value + "\r\n");
     }
 
     public void writeBulkString(String value) throws IOException {
         if (value == null) {
-            write("$-1\r\n");
+            writeRaw("$-1\r\n");
             return;
         }
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        write("$" + bytes.length + "\r\n");
+        writeRaw("$" + bytes.length + "\r\n");
         output.write(bytes);
-        write("\r\n");
+        writeRaw("\r\n");
     }
 
     public void writeInteger(int value) throws IOException {
-        write(":" + value + "\r\n");
+        writeRaw(":" + value + "\r\n");
     }
 
     public void writeError(String message) throws IOException {
-        write("-" + message + "\r\n");
+        writeRaw("-" + message + "\r\n");
     }
 
-    private void write(String value) throws IOException {
+    public void write(CommandResult result) throws IOException {
+
+        switch (result.getType()) {
+
+            case SIMPLE_STRING:
+                writeSimpleString(result.getValue());
+                break;
+
+            case BULK_STRING:
+                writeBulkString(result.getValue());
+                break;
+
+            case INTEGER:
+                writeInteger(Integer.parseInt(result.getValue()));
+                break;
+
+            case ERROR:
+                writeError(result.getValue());
+                break;
+
+            case NULL:
+                writeRaw("$-1\r\n");
+                break;
+        }
+    }
+
+    private void writeRaw(String value) throws IOException {
         output.write(value.getBytes(StandardCharsets.UTF_8));
         output.flush();
     }

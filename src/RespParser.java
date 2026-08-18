@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayOutputStream;
 
 public class RespParser {
 
@@ -10,47 +11,70 @@ public class RespParser {
         this.input = input;
     }
 
-    public String[] readCommand() throws IOException {
+    public RespCommand readCommand() throws IOException {
+
+        ByteArrayOutputStream rawBuffer = new ByteArrayOutputStream();
+
         int firstByte = input.read();
+
         if (firstByte == -1) {
             return null;
         }
+
+        rawBuffer.write(firstByte);
+
         if (firstByte != '*') {
             throw new IOException("Expected RESP array");
         }
-        int count = readInteger();
-        String[] command = new String[count];
+
+        int count = readInteger(rawBuffer);
+        String[] arguments = new String[count];
+
         for (int i = 0; i < count; i++) {
-            command[i] = readBulkString();
+            arguments[i] = readBulkString(rawBuffer);
         }
-        return command;
+
+        return new RespCommand(arguments, rawBuffer.toByteArray());
     }
-    private int readInteger() throws IOException {
-        String line = readLine();
+
+    private int readInteger(ByteArrayOutputStream rawBuffer) throws IOException {
+        String line = readLine(rawBuffer);
         return Integer.parseInt(line);
     }
-    private String readBulkString() throws IOException {
+
+    private String readBulkString(ByteArrayOutputStream rawBuffer) throws IOException {
         int firstByte = input.read();
+        rawBuffer.write(firstByte);
+
         if (firstByte != '$') {
             throw new IOException("Expected bulk string");
         }
-        int length = readInteger();
+
+        int length = readInteger(rawBuffer);
         byte[] data = input.readNBytes(length);
-        input.read();
-        input.read();
+        rawBuffer.write(data);
+
+        // consume \r\n
+        int cr = input.read();
+        int lf = input.read();
+        rawBuffer.write(cr);
+        rawBuffer.write(lf);
+
         return new String(data, StandardCharsets.UTF_8);
     }
-    private String readLine() throws IOException {
+
+    private String readLine(ByteArrayOutputStream rawBuffer) throws IOException {
 
         StringBuilder builder = new StringBuilder();
-
         int current;
 
         while ((current = input.read()) != -1) {
 
+            rawBuffer.write(current);
+
             if (current == '\r') {
                 int next = input.read();
-
+                rawBuffer.write(next);
                 if (next == '\n') {
                     break;
                 }

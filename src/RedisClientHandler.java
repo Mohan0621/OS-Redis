@@ -1,57 +1,63 @@
 import java.io.IOException;
-import java.net.socket;
+import java.net.Socket;
 
 public class RedisClientHandler implements Runnable {
+
     private final Socket clientSocket;
-    private final CommandHandler CommandHandler;
-    RedisClientHandler(Socket clientSocket,CommandHandler commandHandler){
-        this.clientSocket=clientSocket;
-        this.commandHandler=commandHandler;
+    private final CommandHandler commandHandler;
+    private final RedisDatabase database;
+
+    public RedisClientHandler(
+            Socket clientSocket,
+            CommandHandler commandHandler,
+            RedisDatabase database) {
+
+        this.clientSocket = clientSocket;
+        this.commandHandler = commandHandler;
+        this.database = database;
     }
 
     @Override
-    public void run(){
-        try{
-            RespParser parser= new RespParser(clientSocket.getInputStream());
-            RespWriter writer =new RespWriter(clientSocket.getOutputStream());
+    public void run() {
 
-            String response = commandHandler.execute(command);
+        try {
 
-            while(true){
-                String[] command = parser.readCommand();
-                if(command==null){
+            RespParser parser =
+                    new RespParser(clientSocket.getInputStream());
+
+            RespWriter writer =
+                    new RespWriter(clientSocket.getOutputStream());
+
+            while (true) {
+
+                RespCommand command = parser.readCommand();
+
+                if (command == null) {
                     break;
                 }
 
-                if(command[0].equalsIggnoreCase("SET")){
-                    writer.writeSimpleString(response);
-                }
-                else if(command[0].equalsIggnoreCase("GET")){
-                    writer.writeBulkString(response.equals("(nil)")?null:response);
-                }
-                else if (command[0].equalsIggnoreCase("DEL")){
-                    writer.writeInteger(Integer.parserInt(response));
-                }
-                else{
-                    writer.writeError(response);
-                }
-            } catch (IOException e) {
+                CommandResult result = commandHandler.execute(command);
 
-            System.out.println(
-                    "Client connection error: "
-                            + e.getMessage()
-            );
+                // Persist the raw RESP bytes to the AOF log *after* a successful execute
+                // Only write-commands need persisting; reads (GET, TTL) are skipped
+                String op = command.getArguments()[0].toUpperCase();
+                if (op.equals("SET") || op.equals("DEL") || op.equals("INCR")) {
+                    database.persist(command);
+                }
+
+                writer.write(result);
+            }
+
+        } catch (IOException e) {
+
+            System.out.println("Client connection error: " + e.getMessage());
 
         } finally {
 
             try {
                 clientSocket.close();
-            } 
-            catch (IOException ignored) {
+            } catch (IOException ignored) {
             }
-
         }
     }
-
-
 }
