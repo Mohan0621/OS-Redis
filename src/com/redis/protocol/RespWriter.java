@@ -29,6 +29,10 @@ public class RespWriter {
     }
 
     public void writeInteger(int value) throws IOException {
+        writeInteger((long) value);
+    }
+
+    public void writeInteger(long value) throws IOException {
         writeRaw(":" + value + "\r\n");
     }
 
@@ -49,7 +53,7 @@ public class RespWriter {
                 break;
 
             case INTEGER:
-                writeInteger(Integer.parseInt(result.getValue()));
+                writeInteger(Long.parseLong(result.getValue()));
                 break;
 
             case ERROR:

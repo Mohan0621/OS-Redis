@@ -36,6 +36,10 @@ public class CommandResult {
         return new CommandResult(RespType.INTEGER, String.valueOf(value));
     }
 
+    public static CommandResult integer(long value) {
+        return new CommandResult(RespType.INTEGER, String.valueOf(value));
+    }
+
     public static CommandResult error(String message) {
         return new CommandResult(RespType.ERROR, message);
     }
