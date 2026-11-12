@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   At any RUNNING moment → FAILED if task throws Throwable
  *     (worker continues loop — it doesn't die on task failure)
  */
-public class RedisWorkerPool {
+public class RedisWorkerPool implements MonitorablePool {
 
     // ----------------------------------------------------------------
     // Sentinel used as a "poison pill" during shutdown.

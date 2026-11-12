@@ -1,41 +1,76 @@
 import java.io.IOException;
 import java.net.Socket;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Handles one TCP client connection.
+ * Handles one TCP client connection end-to-end.
  *
- * v2 changes
- * ----------
- * - Commands are no longer executed inline on the acceptor thread.
- *   Instead each command is wrapped in a Runnable and submitted to
- *   CommandRouter, which places it on the correct DataTypePartition
- *   queue based on the command verb and key.
+ * Pipeline
+ * --------
  *
- * - The response must be written back from inside the task because
- *   the RespWriter is tied to this socket's output stream, and we
- *   must not write to it from multiple threads simultaneously.
- *   The task captures writer + result by closure — safe because
- *   each task runs on exactly one worker thread.
+ *   connection-worker thread
+ *       │
+ *       ▼
+ *   RespParser.readCommand()
+ *       │
+ *       ▼
+ *   CompletableFuture<CommandResult> future = new CompletableFuture<>()
+ *       │
+ *       ▼
+ *   router.route(verb, key, () -> {
+ *       result = commandHandler.execute(command)   ← runs on partition worker
+ *       if write: database.persist(command)        ← AOF, still on partition worker
+ *       future.complete(result)                    ← unblocks connection worker
+ *   })
+ *       │
+ *       ▼
+ *   future.join()          ← connection worker blocks here (NOT on DB semaphore)
+ *       │
+ *       ▼
+ *   writer.write(result)   ← back on connection worker — no concurrent writers possible
+ *       │
+ *       ▼
+ *   loop back to readCommand()
  *
- * - If the router rejects the task (queue full / shutting down), we
- *   immediately send a RESP error back to the client.  This is the
- *   client-visible backpressure signal.
+ * Why future.join() instead of writing from inside the task
+ * ----------------------------------------------------------
+ * Writing the response from inside the partition worker (as before) means the
+ * response reaches the client on whichever thread finished the DB op — which
+ * is fine for a single command but breaks pipelining.  Consider:
  *
- * - AOF persistence happens inside the task, after commandHandler.execute(),
- *   so it is also serialised per-partition (no concurrent writes to AOF
- *   from the same key's operations).
+ *   Client sends:  SET x 1  →  GET x
  *
- * Offer timeout: 100 ms.  Enough for transient bursts; short enough
- * that a saturated server surfaces the problem quickly.
+ *   SET x 1 lands on string-partition-2
+ *   GET x   lands on string-partition-2   (same key → same partition)
+ *
+ *   Because the same partition has exactly one worker, SET always runs before GET.
+ *   But if they had landed on DIFFERENT partitions (different keys, same client),
+ *   the partition workers would race to call writer.write() — and even though
+ *   synchronized(writer) prevents byte-interleaving, it cannot fix the ordering:
+ *   whichever partition finishes first wins the lock and sends its response first,
+ *   regardless of which command came first from the client.
+ *
+ * With future.join() the connection worker is the *only* thread that ever calls
+ * writer.write(), in exactly the order commands arrived.  No lock needed.
+ *
+ * Backpressure
+ * ------------
+ * If the partition queue is full, router.route() throws TaskRejectedException.
+ * We write a RESP error immediately and continue — the client sees the error
+ * for that one command and can retry.  The connection itself stays alive.
+ *
+ * Keyless commands (PING, INFO, …)
+ * ---------------------------------
+ * Commands with no key argument use "__keyless__" as the routing key.
+ * They always land on the same partition slot (consistent hash), which is fine
+ * because keyless commands don't race with each other in any meaningful way.
  */
 public class RedisClientHandler implements Runnable {
 
     private static final long   OFFER_TIMEOUT_MS = 100;
-    private static final String ERR_OVERLOADED   =
-            "-ERR server overloaded, try again\r\n";
-    private static final String ERR_SHUTDOWN     =
-            "-ERR server shutting down\r\n";
+    private static final String ERR_OVERLOADED   = "-ERR server overloaded, try again\r\n";
+    private static final String ERR_SHUTDOWN     = "-ERR server shutting down\r\n";
 
     private final Socket         clientSocket;
     private final CommandHandler commandHandler;
@@ -59,27 +94,23 @@ public class RedisClientHandler implements Runnable {
 
         try {
 
-            RespParser parser =
-                    new RespParser(clientSocket.getInputStream());
-
-            RespWriter writer =
-                    new RespWriter(clientSocket.getOutputStream());
+            RespParser parser = new RespParser(clientSocket.getInputStream());
+            RespWriter  writer = new RespWriter(clientSocket.getOutputStream());
 
             while (true) {
 
                 RespCommand command = parser.readCommand();
-
-                if (command == null) {
-                    break;         // client disconnected
-                }
+                if (command == null) break;   // client disconnected
 
                 String[] args = command.getArguments();
                 String   verb = args[0].toUpperCase();
+                String   key  = (args.length > 1) ? args[1] : "__keyless__";
 
-                // Key is the first argument after the verb for all standard
-                // Redis commands.  For keyless commands (e.g. PING, INFO)
-                // we use a synthetic key so routing still works.
-                String key = (args.length > 1) ? args[1] : "__keyless__";
+                // One future per command — the partition worker completes it,
+                // this thread joins on it.  Ordering is therefore determined
+                // by the order we call join(), which equals the order commands
+                // arrived from the client.
+                CompletableFuture<CommandResult> future = new CompletableFuture<>();
 
                 try {
 
@@ -87,12 +118,16 @@ public class RedisClientHandler implements Runnable {
                             verb,
                             key,
                             () -> {
-                                // ---- This runs on a partition worker thread ----
+                                // ---- Runs on a partition worker thread ----
+                                CommandResult result;
+                                try {
+                                    result = commandHandler.execute(command);
+                                } catch (Exception e) {
+                                    result = CommandResult.error(
+                                            "ERR internal: " + e.getMessage());
+                                }
 
-                                CommandResult result =
-                                        commandHandler.execute(command);
-
-                                // AOF: persist write commands only
+                                // AOF: persist mutating commands only
                                 if (isWriteCommand(verb)) {
                                     try {
                                         database.persist(command);
@@ -102,33 +137,29 @@ public class RedisClientHandler implements Runnable {
                                     }
                                 }
 
-                                // Write response back through this socket.
-                                // Synchronised on writer to guard against the
-                                // rare case where pipelining could cause two
-                                // tasks for the same client to race here.
-                                synchronized (writer) {
-                                    try {
-                                        writer.write(result);
-                                    } catch (IOException e) {
-                                        System.err.println(
-                                                "Write to client failed: "
-                                                + e.getMessage());
-                                    }
-                                }
+                                // Unblock the connection worker — it will write
+                                // the response in its own thread, in order.
+                                future.complete(result);
                             },
                             OFFER_TIMEOUT_MS,
                             TimeUnit.MILLISECONDS
                     );
 
+                    // Block until the partition worker signals completion.
+                    // This connection worker thread is the ONLY writer to this
+                    // socket, so no synchronisation on writer is needed.
+                    CommandResult result = future.join();
+                    writer.write(result);
+
                 } catch (TaskRejectedException e) {
 
-                    // The partition queue was full — tell the client immediately.
+                    // Queue full or shutting down — respond immediately and
+                    // keep the connection alive for the next command.
                     String errMsg = e.getMessage().contains("shutting down")
                             ? ERR_SHUTDOWN
                             : ERR_OVERLOADED;
                     try {
-                        clientSocket.getOutputStream()
-                                .write(errMsg.getBytes());
+                        clientSocket.getOutputStream().write(errMsg.getBytes());
                     } catch (IOException ignored) {}
 
                 } catch (InterruptedException e) {
@@ -138,19 +169,14 @@ public class RedisClientHandler implements Runnable {
             }
 
         } catch (IOException e) {
-
             System.out.println("Client connection error: " + e.getMessage());
-
         } finally {
-
-            try {
-                clientSocket.close();
-            } catch (IOException ignored) {}
+            try { clientSocket.close(); } catch (IOException ignored) {}
         }
     }
 
     // ----------------------------------------------------------------
-    // Helper
+    // Write-command classification (AOF persistence)
     // ----------------------------------------------------------------
 
     private static boolean isWriteCommand(String verb) {

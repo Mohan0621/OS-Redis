@@ -6,47 +6,55 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Redis server entry point — v2.
+ * Redis server entry point — v3.
  *
- * Architecture wired here
- * -----------------------
+ * Architecture
+ * ------------
  *
  *   TCP accept loop
  *       │
  *       ▼
- *   RedisWorkerPool     ← connection-handler pool (thin I/O threads)
+ *   ConnectionPool          ← custom pool; workers own the full client session
  *       │  (4 workers, queue=8)
- *       ▼
- *   RedisClientHandler  ← parses RESP, routes each command
+ *       │
+ *       │  Each worker builds a RedisClientHandler and calls run().
+ *       │  The handler reads RESP commands from the socket, wraps each
+ *       │  command in a Runnable closure, and submits it to CommandRouter.
+ *       │  The worker does NOT hold any database permit here.
  *       │
  *       ▼
- *   CommandRouter       ← classifies verb → DataTypePartition
+ *   RedisClientHandler
  *       │
- *       ├─ STRING (4 partitions, 2 workers each = 4 workers)
+ *       ▼
+ *   CommandRouter           ← classifies verb → DataTypePartition
+ *       │
+ *       ├─ STRING (4 partitions)
  *       ├─ LIST   (2 partitions)
  *       ├─ HASH   (2 partitions)
  *       ├─ SET    (2 partitions)
  *       └─ ZSET   (2 partitions)
  *             │
- *         shared Semaphore(8)  ← caps total concurrent DB ops
+ *         shared Semaphore(8)   ← caps total concurrent DB ops
  *             │
  *         CommandHandler → RedisDatabase
  *
- * Two pools, two jobs
- * -------------------
- * connectionPool   — one worker per active client connection.
- *                    Spends most of its time blocked on socket read.
- *                    4 workers is fine because I/O is the bottleneck here.
+ * Two independently bounded layers
+ * ---------------------------------
+ *   Connection layer  : ConnectionPool queue (8 slots) + 4 workers
+ *   Database layer    : per-partition queues (16 slots each) + 12 workers
+ *                       gated by Semaphore(8)
  *
- * CommandRouter    — one worker per partition lane.
- *                    These are the CPU/memory workers that actually touch
- *                    data structures.  Gated by the shared semaphore.
+ * Connection workers are NOT database workers.  A connection worker is
+ * blocked for the duration of one client session (socket reads + waiting
+ * for partition results), but it never holds a DB semaphore permit.
+ * The permit is only held inside DataTypePartition.workerLoop() while
+ * the actual store operation runs.
  *
  * Shutdown sequence (Ctrl+C via JVM shutdown hook)
  * -------------------------------------------------
  *   1. Stop accepting new connections (close ServerSocket).
- *   2. Shut down CommandRouter — drains all partition queues.
- *   3. Shut down connectionPool — in-flight handlers complete.
+ *   2. Shut down CommandRouter   — drains all partition queues first.
+ *   3. Shut down ConnectionPool  — in-flight handlers complete.
  *   4. Stop expiration scheduler.
  */
 public class RedisServer {
@@ -54,7 +62,9 @@ public class RedisServer {
     private static final int PORT             = 6379;
     private static final int CONN_WORKERS     = 4;
     private static final int CONN_QUEUE_CAP   = 8;
+    private static final int DB_PERMITS       = 8;
     private static final int MONITOR_INTERVAL = 5_000;   // ms
+    private static final long OFFER_TIMEOUT_MS = 100;
 
     public static void main(String[] args) throws IOException {
 
@@ -69,14 +79,19 @@ public class RedisServer {
         database.setRecovering(false);
 
         // ---- Command routing layer ----
-        CommandRouter router = new CommandRouter(8);   // 8 shared DB permits
+        // 12 partition workers total, all sharing one Semaphore(8)
+        CommandRouter router = new CommandRouter(DB_PERMITS);
 
-        // ---- Connection handling pool ----
-        // Thin pool: workers spend most time waiting on socket reads.
-        // We do NOT route commands from these workers — they just parse
-        // and hand off to CommandRouter immediately.
-        RedisWorkerPool connectionPool =
-                new RedisWorkerPool(CONN_WORKERS, CONN_QUEUE_CAP);
+        // ---- Connection pool ----
+        // Workers here are I/O-bound: they spend most time on socket reads
+        // and waiting for partition results. They never hold a DB permit.
+        ConnectionPool connectionPool = new ConnectionPool(
+                CONN_WORKERS,
+                CONN_QUEUE_CAP,
+                commandHandler,
+                database,
+                router
+        );
 
         // ---- Background expiration sweep ----
         ScheduledExecutorService expirationScheduler =
@@ -89,7 +104,7 @@ public class RedisServer {
         expirationScheduler.scheduleAtFixedRate(
                 database::removeExpiredKeys, 1, 1, TimeUnit.SECONDS);
 
-        // ---- Pool health monitor ----
+        // ---- Connection pool monitor ----
         Thread monitorThread = new Thread(
                 new RedisPoolMonitor(connectionPool, MONITOR_INTERVAL),
                 "pool-monitor"
@@ -101,31 +116,43 @@ public class RedisServer {
         ServerSocket serverSocket = new ServerSocket(PORT);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+
             System.out.println("\nShutdown signal received — draining...");
+
+            // 1. Stop accepting new connections
             try {
                 serverSocket.close();
             } catch (IOException ignored) {}
+
+            // 2. Drain all partition queues (DB layer)
             try {
                 router.shutdown();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+
+            // 3. Drain in-flight connection handlers
             try {
                 connectionPool.shutdown();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+
+            // 4. Stop expiry sweeper
             expirationScheduler.shutdown();
+
             System.out.println("Server stopped cleanly.");
+
         }, "shutdown-hook"));
 
+        // ---- Startup banner ----
         System.out.println("Redis server started on port " + PORT);
         System.out.printf(
-                "Connection pool: %d workers, queue=%d%n",
+                "Connection pool : %d workers, queue capacity=%d%n",
                 CONN_WORKERS, CONN_QUEUE_CAP);
         System.out.printf(
-                "Command router:  %d total partition workers, 8 DB permits%n",
-                router.totalWorkers());
+                "Command router  : %d total partition workers, %d DB permits%n",
+                router.totalWorkers(), DB_PERMITS);
         System.out.println();
 
         // ---- Accept loop ----
@@ -146,13 +173,8 @@ public class RedisServer {
             try {
 
                 connectionPool.submit(
-                        new RedisClientHandler(
-                                clientSocket,
-                                commandHandler,
-                                database,
-                                router
-                        ),
-                        100,
+                        new ConnectionTask(clientSocket),
+                        OFFER_TIMEOUT_MS,
                         TimeUnit.MILLISECONDS
                 );
 

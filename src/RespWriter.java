@@ -56,6 +56,17 @@ public class RespWriter {
             case NULL:
                 writeRaw("$-1\r\n");
                 break;
+
+            case ARRAY:
+                writeArray(result.getElements());
+                break;
+        }
+    }
+
+    public void writeArray(java.util.List<String> elements) throws IOException {
+        writeRaw("*" + elements.size() + "\r\n");
+        for (String element : elements) {
+            writeBulkString(element);   // null element → $-1\r\n
         }
     }
 

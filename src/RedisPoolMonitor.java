@@ -1,24 +1,29 @@
 /**
- * Background thread that periodically prints a pool health snapshot.
+ * Background thread that periodically prints a connection-pool health snapshot.
  *
- * v2 changes
- * ----------
- * - Reads PoolMetrics (immutable snapshot) instead of individual getters.
- * - Prints PoolHealth interpretation alongside raw numbers.
- * - Shows per-worker state so stalled or failed workers are visible.
- * - Shows derived averages (producer wait, consumer wait) in milliseconds.
+ * Reads {@link PoolMetrics} (immutable snapshot) and per-worker
+ * {@link WorkerInfo} state from a {@link ConnectionPool}.
+ *
+ * Metrics printed
+ * ---------------
+ * - Pool health (HEALTHY / DEGRADED / OVERLOADED / SHUTTING_DOWN)
+ * - Active / queued / capacity counts
+ * - Submitted / completed / rejected lifetime counters
+ * - Producer wait ms  — how long the accept loop waited for queue space
+ * - Consumer wait ms  — how long workers idled waiting for connections
+ * - Per-worker state  — makes stalled or failed workers immediately visible
  */
 public class RedisPoolMonitor implements Runnable {
 
-    private final RedisWorkerPool pool;
+    private final MonitorablePool pool;
     private final long intervalMs;
     private volatile boolean stopped = false;
 
-    public RedisPoolMonitor(RedisWorkerPool pool) {
+    public RedisPoolMonitor(MonitorablePool pool) {
         this(pool, 2_000);
     }
 
-    public RedisPoolMonitor(RedisWorkerPool pool, long intervalMs) {
+    public RedisPoolMonitor(MonitorablePool pool, long intervalMs) {
         this.pool       = pool;
         this.intervalMs = intervalMs;
     }
