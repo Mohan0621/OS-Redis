@@ -228,8 +228,9 @@ Known issues:
 
 ## Contributors
 
-- **Chaitanya MVR**
 - **Mohan**
+Kishore 
+Aslam
 
 Built as an Operating Systems course project.
 

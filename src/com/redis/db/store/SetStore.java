@@ -2,6 +2,7 @@ package com.redis.db.store;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,14 @@ public class SetStore {
 
     public boolean containsKey(String key) {
         return sets.containsKey(key);
+    }
+
+    public int size() {
+        return sets.size();
+    }
+
+    public Set<String> keys() {
+        return new HashSet<>(sets.keySet());
     }
 
     public boolean removeRaw(String key) {

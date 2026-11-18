@@ -13,6 +13,7 @@ import com.redis.protocol.RespCommand;
  */
 public class CommandHandler {
 
+    private final RedisDatabase             database;
     private final StringCommandHandler    stringHandler;
     private final ListCommandHandler      listHandler;
     private final HashCommandHandler      hashHandler;
@@ -20,6 +21,7 @@ public class CommandHandler {
     private final SortedSetCommandHandler zsetHandler;
 
     public CommandHandler(RedisDatabase database) {
+        this.database       = database;
         this.stringHandler = new StringCommandHandler(database);
         this.listHandler   = new ListCommandHandler(database);
         this.hashHandler   = new HashCommandHandler(database);
@@ -42,7 +44,9 @@ public class CommandHandler {
         return switch (operation) {
 
             // ---- Keyless ----
-            case "PING" -> handlePing(command);
+            case "PING"   -> handlePing(command);
+            case "DBSIZE" -> handleDbsize(command);
+            case "KEYS"   -> handleKeys(command);
 
             // ---- String / Key / TTL ----
             case "SET", "GET", "DEL", "INCR", "DECR",
@@ -80,5 +84,15 @@ public class CommandHandler {
         if (command.length == 1) return CommandResult.simpleString("PONG");
         if (command.length == 2) return CommandResult.bulkString(command[1]);
         return CommandResult.error("ERR wrong number of arguments for 'ping'");
+    }
+
+    private CommandResult handleDbsize(String[] command) {
+        if (command.length != 1) return CommandResult.error("ERR wrong number of arguments for 'dbsize'");
+        return CommandResult.integer(database.dbsize());
+    }
+
+    private CommandResult handleKeys(String[] command) {
+        if (command.length != 2) return CommandResult.error("ERR wrong number of arguments for 'keys'");
+        return CommandResult.array(database.keys(command[1]));
     }
 }

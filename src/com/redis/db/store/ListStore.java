@@ -2,10 +2,12 @@ package com.redis.db.store;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -26,6 +28,14 @@ public class ListStore {
 
     public boolean containsKey(String key) {
         return lists.containsKey(key);
+    }
+
+    public int size() {
+        return lists.size();
+    }
+
+    public Set<String> keys() {
+        return new HashSet<>(lists.keySet());
     }
 
     public boolean removeRaw(String key) {

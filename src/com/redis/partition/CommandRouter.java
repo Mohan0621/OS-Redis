@@ -261,7 +261,8 @@ public class CommandRouter {
                  "MGET", "MSET", "SETNX", "GETSET",
                  "APPEND", "STRLEN", "TTL", "PTTL",
                  "PERSIST", "EXPIRE", "PEXPIRE",
-                 "GETDEL", "GETEX"
+                 "GETDEL", "GETEX",
+                 "DBSIZE", "KEYS"
                     -> DataType.STRING;
 
             // ---- List commands ----

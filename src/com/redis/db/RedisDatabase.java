@@ -51,6 +51,59 @@ public class RedisDatabase {
     }
 
     // ================================================================
+    // Key enumeration (read-only, cross-type)
+    // ================================================================
+
+    public int dbsize() {
+        return strings.size() + lists.size() + hashes.size() + sets.size() + zsets.size();
+    }
+
+    public List<String> keys(String pattern) {
+        java.util.List<String> result = new java.util.ArrayList<>();
+        java.util.regex.Pattern regex = globToRegex(pattern);
+        addMatchingKeys(strings.keys(), regex, result);
+        addMatchingKeys(lists.keys(),   regex, result);
+        addMatchingKeys(hashes.keys(),  regex, result);
+        addMatchingKeys(sets.keys(),    regex, result);
+        addMatchingKeys(zsets.keys(),   regex, result);
+        return result;
+    }
+
+    private static java.util.regex.Pattern globToRegex(String glob) {
+        // Convert Redis glob to Java regex. Escape regex metacharacters except * ? [ ].
+        StringBuilder sb = new StringBuilder();
+        sb.append('^');
+        int i = 0;
+        while (i < glob.length()) {
+            char c = glob.charAt(i++);
+            switch (c) {
+                case '*': sb.append(".*"); break;
+                case '?': sb.append('.'); break;
+                case '[':
+                    // char class — copy until matching ]
+                    sb.append('[');
+                    if (i < glob.length() && glob.charAt(i) == '^') { sb.append('^'); i++; }
+                    while (i < glob.length() && glob.charAt(i) != ']') {
+                        sb.append(glob.charAt(i++));
+                    }
+                    if (i < glob.length()) { sb.append(']'); i++; }
+                    break;
+                default:
+                    if ("\\.+(){}|^$".indexOf(c) >= 0) sb.append('\\');
+                    sb.append(c);
+            }
+        }
+        sb.append('$');
+        return java.util.regex.Pattern.compile(sb.toString());
+    }
+
+    private static void addMatchingKeys(java.util.Set<String> source, java.util.regex.Pattern regex, java.util.List<String> result) {
+        for (String key : source) {
+            if (regex.matcher(key).matches()) result.add(key);
+        }
+    }
+
+    // ================================================================
     // Cross-type expiration & key deletion
     // ================================================================
 

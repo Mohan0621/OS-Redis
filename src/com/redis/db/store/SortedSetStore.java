@@ -1,8 +1,10 @@
 package com.redis.db.store;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import com.redis.db.store.SortedSet.LexBound;
 import com.redis.db.store.SortedSet.ScoreBound;
@@ -21,6 +23,14 @@ public class SortedSetStore {
 
     public boolean containsKey(String key) {
         return zsets.containsKey(key);
+    }
+
+    public int size() {
+        return zsets.size();
+    }
+
+    public Set<String> keys() {
+        return new HashSet<>(zsets.keySet());
     }
 
     public boolean removeRaw(String key) {

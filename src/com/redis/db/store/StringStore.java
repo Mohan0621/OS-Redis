@@ -1,8 +1,10 @@
 package com.redis.db.store;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import com.redis.db.RedisEntry;
 
@@ -35,6 +37,14 @@ public class StringStore {
     public boolean deleteIfActive(String key) {
         RedisEntry entry = data.remove(key);
         return entry != null && !entry.isExpired();
+    }
+
+    public int size() {
+        return data.size();
+    }
+
+    public Set<String> keys() {
+        return new HashSet<>(data.keySet());
     }
 
     public String addToNumber(String key, long delta) {

@@ -4,8 +4,10 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -22,6 +24,14 @@ public class HashStore {
 
     public boolean containsKey(String key) {
         return hashes.containsKey(key);
+    }
+
+    public int size() {
+        return hashes.size();
+    }
+
+    public Set<String> keys() {
+        return new HashSet<>(hashes.keySet());
     }
 
     public boolean removeRaw(String key) {
