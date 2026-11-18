@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redis Clone — OS Project</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --red:#E53935; --soft:#FF6B6B; --gold:#FFC107;
+  --bg:#0A0A0A; --bg2:#111; --bg3:#1A1A1A;
+  --border:rgba(255,255,255,0.08); --text:#F0F0F0; --muted:#777;
+  --grad:linear-gradient(135deg,#E53935 0%,#FF8A65 100%);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;user-select:none;}
+.pb{position:fixed;top:0;left:0;height:3px;background:var(--grad);transition:width .35s ease;z-index:1000;}
+.deck{width:100vw;height:100vh;position:relative;overflow:hidden;}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;
+  padding:52px 72px;opacity:0;visibility:hidden;transition:opacity .4s ease;background:var(--bg);text-align:center;}
+.slide.on{opacity:1;visibility:visible;}
+.slide.la{text-align:left;align-items:flex-start;}
+.sn{position:absolute;top:22px;right:28px;font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;}
+.tag{display:inline-block;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--soft);margin-bottom:14px;
+  border:1px solid rgba(229,57,53,.35);padding:4px 14px;border-radius:20px;}
+h1.hero{font-size:clamp(38px,6vw,76px);font-weight:800;line-height:1.08;background:var(--grad);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:18px;}
+h2.sh{font-size:clamp(24px,3.6vw,46px);font-weight:700;line-height:1.15;margin-bottom:10px;}
+h2.sh span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+p.lead{font-size:clamp(13px,1.6vw,19px);color:rgba(240,240,240,.65);line-height:1.65;max-width:760px;}
+.sub{font-size:12px;color:var(--muted);margin-top:10px;}
+.line{width:56px;height:3px;background:var(--grad);border-radius:2px;margin:18px auto 0;}
+.line.l{margin:18px 0 0;}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;width:100%;margin-top:24px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;width:100%;margin-top:22px;}
+.g2{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;width:100%;margin-top:22px;}
+.sp{display:grid;grid-template-columns:1fr 1fr;gap:40px;width:100%;text-align:left;align-items:start;}
+.card{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:20px 16px;
+  transition:border-color .2s,transform .2s;}
+.card:hover{border-color:rgba(229,57,53,.4);transform:translateY(-2px);}
+.card .ico{font-size:26px;margin-bottom:9px;}
+.card h3{font-size:14px;font-weight:700;margin-bottom:6px;color:#fff;}
+.card p{font-size:12px;color:var(--muted);line-height:1.55;}
+.card .big{font-size:40px;font-weight:900;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px;}
+.layers{width:100%;max-width:900px;margin-top:18px;display:flex;flex-direction:column;gap:8px;}
+.layer{display:flex;align-items:center;gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 16px;}
+.badge{background:var(--red);color:#fff;font-size:9px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:20px;white-space:nowrap;text-transform:uppercase;flex-shrink:0;}
+.layer h4{font-size:12px;font-weight:700;flex:1;text-align:left;}
+.layer p{font-size:11px;color:var(--muted);text-align:left;flex:2;line-height:1.4;}
+.code{background:#0C0C0C;border:1px solid var(--border);border-radius:10px;padding:16px 18px;
+  font-family:'Consolas','Courier New',monospace;font-size:12px;text-align:left;line-height:1.85;
+  color:#cdd6f4;white-space:pre;width:100%;margin-top:14px;}
+.c{color:#89b4fa;}.k{color:#a6e3a1;}.v{color:#f9e2af;}.r{color:#94e2d5;}.cm{color:#555;}
+.af{display:flex;align-items:center;justify-content:center;gap:5px;width:100%;margin-top:20px;flex-wrap:wrap;}
+.ab{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 14px;text-align:center;min-width:95px;}
+.ab.hl{border-color:var(--red);background:rgba(229,57,53,.1);}
+.ab .i{font-size:18px;margin-bottom:4px;}.ab h4{font-size:11px;font-weight:700;}.ab p{font-size:9px;color:var(--muted);margin-top:2px;}
+.arr{font-size:16px;color:var(--muted);flex-shrink:0;}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;margin-top:20px;}
+.cc{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:left;}
+.cc.good{border-color:rgba(166,227,161,.35);}.cc.imp{border-color:rgba(249,226,175,.3);}
+.cc h3{font-size:13px;font-weight:700;margin-bottom:11px;}
+.cc ul{list-style:none;display:flex;flex-direction:column;gap:6px;}
+.cc ul li{font-size:12px;color:rgba(240,240,240,.7);display:flex;gap:7px;align-items:flex-start;line-height:1.4;}
+.cc.good ul li::before{content:"✓";color:#a6e3a1;flex-shrink:0;}
+.cc.imp  ul li::before{content:"→";color:var(--gold);flex-shrink:0;}
+.fl{list-style:none;display:flex;flex-direction:column;gap:9px;margin-top:14px;}
+.fl li{display:flex;gap:9px;font-size:12px;color:rgba(240,240,240,.75);line-height:1.5;align-items:flex-start;}
+.fl li .dot{width:6px;height:6px;border-radius:50%;background:var(--red);margin-top:5px;flex-shrink:0;}
+.rt{display:flex;align-items:center;gap:11px;background:var(--bg3);border:1px solid var(--border);
+  border-radius:8px;padding:9px 13px;margin-bottom:7px;}
+.rt .sym{font-family:monospace;font-size:19px;font-weight:900;min-width:22px;}
+.rt .nm{font-size:12px;font-weight:600;flex:1;}
+.rt .ex{font-size:10px;color:var(--muted);font-family:monospace;}
+.cw{width:100%;max-width:540px;height:200px;margin:16px auto 0;}
+.slide.on .afu{animation:fadeUp .6s ease-out forwards;}
+.slide.on .ast>*{opacity:0;animation:fadeUp .5s ease-out forwards;}
+.slide.on .ast>*:nth-child(1){animation-delay:.05s;}
+.slide.on .ast>*:nth-child(2){animation-delay:.15s;}
+.slide.on .ast>*:nth-child(3){animation-delay:.25s;}
+.slide.on .ast>*:nth-child(4){animation-delay:.35s;}
+.slide.on .ast>*:nth-child(5){animation-delay:.45s;}
+.slide.on .ast>*:nth-child(6){animation-delay:.55s;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(22px);}to{opacity:1;transform:translateY(0);}}
+.nav{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:16px;z-index:1000;}
+.nb{background:rgba(255,255,255,.07);border:1px solid var(--border);color:#fff;width:34px;height:34px;
+  border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:background .2s;}
+.nb:hover{background:rgba(229,57,53,.3);}
+.sc{font-size:12px;color:var(--muted);min-width:40px;text-align:center;}
+.hint{position:fixed;bottom:24px;right:26px;font-size:10px;color:rgba(255,255,255,.18);}
+</style>
+</head>
+<body>
+<div class="pb" id="pb"></div>
+<div class="deck">
+<!-- SLIDE 1 Title -->
+<div class="slide on">
+<div class="sn">01 / 12</div>
+<div class="tag">Operating Systems Project</div>
+<h1 class="hero afu">Redis Clone</h1>
+<p class="lead afu" style="animation-delay:.15s">A Redis-compatible in-memory database server built from scratch in Java<br>RESP protocol &middot; AOF persistence &middot; partitioned concurrency &middot; 51 commands</p>
+<div class="line"></div>
+<p class="sub afu" style="animation-delay:.3s">Presented to: Operating Systems Faculty &nbsp;&middot;&nbsp; Team: Chaitanya MVR &amp; Mohan</p>
+</div>
+
+<!-- SLIDE 2 What is Redis -->
+<div class="slide">
+<div class="sn">02 / 12</div>
+<div class="tag">Context</div>
+<h2 class="sh">What is <span>Redis</span>?</h2>
+<p class="lead">Redis is the world's most-used in-memory data store &mdash; powering caching, sessions, queues, and real-time features at companies like Twitter, GitHub, and Stack Overflow.</p>
+<div class="g3 ast">
+<div class="card"><div class="ico">&#9889;</div><h3>In-Memory Speed</h3><p>All data lives in RAM. Sub-millisecond reads and writes &mdash; no disk I/O on the hot path.</p></div>
+<div class="card"><div class="ico">&#128193;</div><h3>Rich Data Types</h3><p>Strings, Lists, Hashes, Sets, Sorted Sets &mdash; each with its own purpose and command set.</p></div>
+<div class="card"><div class="ico">&#128190;</div><h3>Optional Persistence</h3><p>AOF logs every write to disk so your data survives crashes and server restarts.</p></div>
+</div>
+</div>
+
+<!-- SLIDE 3 Why we built this -->
+<div class="slide">
+<div class="sn">03 / 12</div>
+<div class="tag">Motivation</div>
+<h2 class="sh">Why build a <span>Redis Clone</span>?</h2>
+<div class="g2 ast">
+<div class="card" style="text-align:left"><div class="ico">&#129525;</div><h3>Concurrency in Practice</h3><p>Thread pools, blocking queues, semaphores, and synchronization &mdash; implemented from scratch, not just studied in theory.</p></div>
+<div class="card" style="text-align:left"><div class="ico">&#128299;</div><h3>Network I/O</h3><p>Raw TCP sockets, a custom binary wire protocol (RESP), and multiple simultaneous client connections.</p></div>
+<div class="card" style="text-align:left"><div class="ico">&#128189;</div><h3>Persistence &amp; File I/O</h3><p>Append-Only File logging, crash recovery, and log replay &mdash; durability without a database engine.</p></div>
+<div class="card" style="text-align:left"><div class="ico">&#9881;</div><h3>OS Primitives</h3><p>Semaphores, monitors, condition variables, and lock-free partitioning &mdash; the full OS toolbox applied to a real system.</p></div>
+</div>
+</div>
+<!-- SLIDE 4 Architecture -->
+<div class="slide">
+<div class="sn">04 / 12</div>
+<div class="tag">Architecture</div>
+<h2 class="sh">System <span>Architecture</span></h2>
+<p class="lead" style="font-size:13px">Five clean layers from raw TCP bytes to persisted data</p>
+<div class="layers ast">
+<div class="layer"><span class="badge">Layer 1</span><h4>TCP Server &mdash; RedisServer.java</h4><p>Listens on port 6379. Accepts TCP connections. Spawns a RedisClientHandler thread per client.</p></div>
+<div class="layer"><span class="badge">Layer 2</span><h4>RESP Protocol &mdash; RespParser / RespWriter</h4><p>Decodes the Redis Serialization Protocol from raw bytes into command arrays. Encodes results back to bytes.</p></div>
+<div class="layer"><span class="badge">Layer 3</span><h4>Command Router &mdash; CommandRouter.java</h4><p>Maps each verb to a DataType partition. Enforces concurrency via a shared Semaphore (8 permits, fair).</p></div>
+<div class="layer"><span class="badge">Layer 4</span><h4>Worker Pool &mdash; DataTypePartition / RedisWorkerPool</h4><p>12 worker threads across 5 partitions. Each has its own BoundedTaskQueue &mdash; zero cross-type contention.</p></div>
+<div class="layer"><span class="badge">Layer 5</span><h4>Database + Persistence &mdash; RedisDatabase / AofLogger</h4><p>In-memory stores per data type. Every write is appended to redis.aof and replayed on startup.</p></div>
+</div>
+</div>
+
+<!-- SLIDE 5 RESP Protocol -->
+<div class="slide la">
+<div class="sn">05 / 12</div>
+<div class="tag">Protocol</div>
+<h2 class="sh">The <span>RESP Protocol</span></h2>
+<p class="lead" style="font-size:13px">Redis Serialization Protocol &mdash; a simple line-based format over TCP, human-readable and binary-safe</p>
+<div class="sp" style="margin-top:16px">
+<div>
+<p style="font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:9px">5 Wire Types</p>
+<div class="rt"><span class="sym" style="color:#a6e3a1">+</span><span class="nm">Simple String</span><span class="ex">+OK\r\n</span></div>
+<div class="rt"><span class="sym" style="color:#f38ba8">-</span><span class="nm">Error</span><span class="ex">-ERR message\r\n</span></div>
+<div class="rt"><span class="sym" style="color:#89b4fa">:</span><span class="nm">Integer</span><span class="ex">:42\r\n</span></div>
+<div class="rt"><span class="sym" style="color:#f9e2af">$</span><span class="nm">Bulk String</span><span class="ex">$5\r\nMohan\r\n</span></div>
+<div class="rt"><span class="sym" style="color:#cba6f7">*</span><span class="nm">Array</span><span class="ex">*3\r\n$3\r\nSET\r\n...</span></div>
+</div>
+<div>
+<p style="font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:9px">SET key value &mdash; on the wire</p>
+<div class="code" style="margin-top:0"><span class="cm">// Client sends:</span>
+<span class="r">*3</span>        <span class="cm">array of 3 elements</span>
+<span class="r">$3</span>        <span class="cm">bulk string, 3 bytes</span>
+<span class="c">SET</span>
+<span class="r">$4</span>        <span class="cm">bulk string, 4 bytes</span>
+<span class="k">name</span>
+<span class="r">$5</span>        <span class="cm">bulk string, 5 bytes</span>
+<span class="v">Mohan</span>
+<span class="cm">// Server replies:</span>
+<span class="r">+OK</span>       <span class="cm">simple string response</span></div>
+</div>
+</div>
+</div>
+<!-- SLIDE 6 Concurrency -->
+<div class="slide">
+<div class="sn">06 / 12</div>
+<div class="tag">OS Concepts &middot; Concurrency</div>
+<h2 class="sh"><span>Partitioned</span> Concurrency Model</h2>
+<p class="lead" style="font-size:13px">Commands never block each other across data types &mdash; each type has its own isolated worker pool</p>
+<div class="af ast">
+<div class="ab" style="border-color:var(--red);background:rgba(229,57,53,.1)"><div class="i">&#128100;</div><h4>Client</h4><p>TCP</p></div>
+<div class="arr">&#8594;</div>
+<div class="ab"><div class="i">&#128256;</div><h4>Router</h4><p>classify verb</p></div>
+<div class="arr">&#8594;</div>
+<div class="ab hl"><div class="i">&#128308;</div><h4>STRING</h4><p>4 workers</p></div>
+<div class="ab"><div class="i">&#128203;</div><h4>LIST</h4><p>2 workers</p></div>
+<div class="ab"><div class="i">&#128451;</div><h4>HASH</h4><p>2 workers</p></div>
+<div class="ab"><div class="i">&#128309;</div><h4>SET</h4><p>2 workers</p></div>
+<div class="ab"><div class="i">&#128202;</div><h4>ZSET</h4><p>2 workers</p></div>
+</div>
+<div class="g3 ast" style="margin-top:18px">
+<div class="card" style="text-align:left"><h3>&#128274; Semaphore Gate</h3><p>Semaphore(8, fair) shared by all partitions. Caps total concurrent DB ops. Prevents thundering herd under spike load.</p></div>
+<div class="card" style="text-align:left"><h3>&#128230; BoundedTaskQueue</h3><p>Each worker has a fixed-capacity blocking queue. Full queue throws TaskRejectedException &mdash; error sent to client. No unbounded memory growth.</p></div>
+<div class="card" style="text-align:left"><h3>&#128273; Key Hashing</h3><p>Within a partition, tasks are hashed by key. Same key always hits the same worker, preserving per-key ordering.</p></div>
+</div>
+</div>
+
+<!-- SLIDE 7 AOF Persistence -->
+<div class="slide la">
+<div class="sn">07 / 12</div>
+<div class="tag">OS Concepts &middot; Persistence</div>
+<h2 class="sh">AOF <span>Persistence</span></h2>
+<div class="sp" style="margin-top:14px">
+<div>
+<p class="lead" style="font-size:13px;margin-bottom:12px">Every write command is appended to <code style="color:var(--soft)">redis.aof</code> in RESP format before the response is returned to the client.</p>
+<ul class="fl">
+<li><div class="dot"></div><span><strong>Write path:</strong> Execute command &rarr; return result &rarr; append to AOF file</span></li>
+<li><div class="dot"></div><span><strong>Read path:</strong> No file access &mdash; all reads come from RAM</span></li>
+<li><div class="dot"></div><span><strong>Startup replay:</strong> Server reads AOF line by line and re-executes every command to rebuild in-memory state</span></li>
+<li><div class="dot"></div><span><strong>Durability:</strong> Even after a crash, the AOF contains the full history of all writes</span></li>
+<li><div class="dot"></div><span><strong>Lazy expiry:</strong> Keys with TTL are checked on access &mdash; expired keys are silently removed</span></li>
+</ul>
+</div>
+<div>
+<p style="font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:9px">What redis.aof looks like</p>
+<div class="code" style="margin-top:0;font-size:11px"><span class="cm">*3\r\n$3\r\nSET\r\n$4\r\nname\r\n$5\r\nMohan\r\n</span>
+<span class="cm">*3\r\n$4\r\nHSET\r\n$6\r\nuser:1\r\n...</span>
+<span class="cm">*2\r\n$5\r\nINCR\r\n$7\r\ncounter\r\n</span>
+<span class="cm">*4\r\n$5\r\nLPUSH\r\n$6\r\nmylist\r\n...</span></div>
+<div class="card" style="margin-top:12px;border-color:rgba(249,226,175,.3);text-align:left">
+<h3 style="font-size:12px">&#9888; Crash Recovery</h3>
+<p style="margin-top:5px;font-size:11px">If the server crashes mid-write, the last line may be a partial command. Replay skips it and continues &mdash; no data loss beyond the incomplete command.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- SLIDE 8 Commands -->
+<div class="slide">
+<div class="sn">08 / 12</div>
+<div class="tag">Features</div>
+<h2 class="sh"><span>51 Commands</span> Across 6 Categories</h2>
+<div class="g3 ast">
+<div class="card" style="text-align:left"><div class="big">19</div><h3>String + TTL</h3><p>SET NX/XX/EX/PX, GET, DEL, INCR, DECR, APPEND, STRLEN, MSET, MGET, GETEX, GETDEL, EXPIRE, PEXPIRE, TTL, PTTL, PERSIST</p></div>
+<div class="card" style="text-align:left"><div class="big">13</div><h3>List</h3><p>LPUSH, RPUSH, LPOP, RPOP, LLEN, LRANGE, LINDEX, LSET, LREM, LINSERT, LTRIM, BLPOP, BRPOP</p></div>
+<div class="card" style="text-align:left"><div class="big">12</div><h3>Hash</h3><p>HSET, HMSET, HGET, HMGET, HDEL, HGETALL, HKEYS, HVALS, HEXISTS, HLEN, HINCRBY, HINCRBYFLOAT</p></div>
+<div class="card" style="text-align:left"><div class="big">14</div><h3>Set</h3><p>SADD, SREM, SMEMBERS, SISMEMBER, SCARD, SUNION, SINTER, SDIFF, SUNIONSTORE, SINTERSTORE, SDIFFSTORE, SMOVE, SRANDMEMBER, SPOP</p></div>
+<div class="card" style="text-align:left"><div class="big">15</div><h3>Sorted Set</h3><p>ZADD, ZREM, ZSCORE, ZRANK, ZREVRANK, ZRANGE, ZREVRANGE, ZINCRBY, ZRANGEBYSCORE, ZCOUNT, ZRANGEBYLEX, ZLEXCOUNT...</p></div>
+<div class="card" style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center">
+<div class="ico">&#128257;</div><h3>Blocking Pop</h3><p>BLPOP/BRPOP block using Java Condition.await() until data arrives or timeout expires.</p>
+</div>
+</div>
+</div>
+
+<!-- SLIDE 9 Demo -->
+<div class="slide la">
+<div class="sn">09 / 12</div>
+<div class="tag">Demo</div>
+<h2 class="sh"><span>Live Demo</span></h2>
+<p class="lead" style="font-size:13px">Compile once &mdash; start server &mdash; connect client &mdash; type commands</p>
+<div class="sp" style="margin-top:14px">
+<div>
+<p style="font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:7px">Start</p>
+<div class="code" style="margin-top:0;font-size:11px"><span class="cm"># Compile</span>
+<span class="c">javac -d out (Get-Content sources.txt)</span>
+<span class="cm"># Terminal 1 - Server</span>
+<span class="c">java -cp out com.redis.server.RedisServer</span>
+<span class="cm"># Terminal 2 - Client</span>
+<span class="c">java -cp out com.redis.stress.InteractiveClient</span></div>
+<p style="font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin:12px 0 7px">Strings + TTL</p>
+<div class="code" style="margin-top:0;font-size:11px"><span class="cm">&gt; </span><span class="c">SET name Mohan EX 60</span>  <span class="r">OK</span>
+<span class="cm">&gt; </span><span class="c">GET name</span>              <span class="v">"Mohan"</span>
+<span class="cm">&gt; </span><span class="c">INCR visits</span>          <span class="r">(integer) 1</span>
+<span class="cm">&gt; </span><span class="c">TTL name</span>             <span class="r">(integer) 57</span></div>
+</div>
+<div>
+<p style="font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:7px">Hash &mdash; store objects</p>
+<div class="code" style="margin-top:0;font-size:11px"><span class="cm">&gt; </span><span class="c">HSET user:1 name Mohan age 21 city Hyd</span>
+<span class="r">(integer) 3</span>
+<span class="cm">&gt; </span><span class="c">HGETALL user:1</span>
+<span class="r">1) "name"  2) "Mohan"
+3) "age"   4) "21"
+5) "city"  6) "Hyd"</span></div>
+<p style="font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin:12px 0 7px">Sorted Set &mdash; leaderboard</p>
+<div class="code" style="margin-top:0;font-size:11px"><span class="cm">&gt; </span><span class="c">ZADD scores 300 alice 150 bob 200 charlie</span>
+<span class="r">(integer) 3</span>
+<span class="cm">&gt; </span><span class="c">ZREVRANGE scores 0 -1 WITHSCORES</span>
+<span class="r">1) "alice"    2) "300.0"
+3) "charlie"  4) "200.0"
+5) "bob"      6) "150.0"</span></div>
+</div>
+</div>
+</div>
+<!-- SLIDE 10 Stats -->
+<div class="slide">
+<div class="sn">10 / 12</div>
+<div class="tag">By the Numbers</div>
+<h2 class="sh">Project <span>Stats</span></h2>
+<div class="g4 ast">
+<div class="card"><div class="big">31</div><h3>Java Files</h3><p>All compile cleanly, 0 errors</p></div>
+<div class="card"><div class="big">51</div><h3>Commands</h3><p>Across 5 Redis data types</p></div>
+<div class="card"><div class="big">12</div><h3>Workers</h3><p>Across 5 type partitions</p></div>
+<div class="card"><div class="big">5</div><h3>Data Types</h3><p>String List Hash Set ZSet</p></div>
+</div>
+<div class="cw"><canvas id="wc"></canvas></div>
+</div>
+
+<!-- SLIDE 11 Strengths and Next -->
+<div class="slide">
+<div class="sn">11 / 12</div>
+<div class="tag">Evaluation</div>
+<h2 class="sh">What Works &amp; <span>What is Next</span></h2>
+<div class="cmp ast">
+<div class="cc good">
+<h3>&#9989; What Works Well</h3>
+<ul>
+<li>Full RESP protocol &mdash; compatible with any Redis client</li>
+<li>AOF persistence with startup replay</li>
+<li>Partitioned concurrency &mdash; no global lock</li>
+<li>TTL / lazy expiry on all keys</li>
+<li>Blocking BLPOP using Condition.await()</li>
+<li>Pool monitoring with health metrics</li>
+<li>51 commands across all 5 data types</li>
+<li>Interactive REPL client for live testing</li>
+</ul>
+</div>
+<div class="cc imp">
+<h3>&#128295; Future Improvements</h3>
+<ul>
+<li>Add Maven or Gradle build file</li>
+<li>Fix RespWriter to flush once per full response</li>
+<li>AOF truncation recovery on crash restart</li>
+<li>Active expiry background thread</li>
+<li>MULTI / EXEC transaction support</li>
+<li>PUBLISH / SUBSCRIBE pub-sub</li>
+<li>AUTH password authentication</li>
+<li>JUnit 5 automated test suite</li>
+</ul>
+</div>
+</div>
+</div>
+
+<!-- SLIDE 12 Thank You -->
+<div class="slide">
+<div class="sn">12 / 12</div>
+<div class="tag">Thank You</div>
+<h1 class="hero afu">Thank You</h1>
+<p class="lead afu" style="animation-delay:.15s;max-width:620px">We built a working Redis-compatible server from scratch in Java &mdash; proving that OS concepts like thread pools, semaphores, blocking queues, and file I/O come together to form real production-grade systems.</p>
+<div class="line"></div>
+<div class="g3 ast" style="margin-top:26px;max-width:860px">
+<div class="card"><div class="ico">&#128187;</div><h3>Source Code</h3><p>d:\Mohan\OS\src\</p></div>
+<div class="card"><div class="ico">&#128214;</div><h3>Documentation</h3><p>COMMANDS.md and CODEBASE.md at project root</p></div>
+<div class="card"><div class="ico">&#128587;</div><h3>Questions?</h3><p>Happy to run a live demo or walk through any file</p></div>
+</div>
+</div>
+
+</div><!-- /.deck -->
+
+<div class="nav">
+<button class="nb" onclick="prev()">&#8592;</button>
+<span class="sc"><span id="cur">1</span> / <span id="tot">12</span></span>
+<button class="nb" onclick="next()">&#8594;</button>
+</div>
+<div class="hint">&#8592; &#8594; or click to navigate</div>
+
+<script>
+let cur=1;
+const slides=document.querySelectorAll('.slide');
+const total=slides.length;
+document.getElementById('tot').textContent=total;
+
+function show(n){
+  if(n<1)n=1; if(n>total)n=total; cur=n;
+  slides.forEach((s,i)=>{ s.classList.toggle('on',i===n-1); });
+  document.getElementById('cur').textContent=n;
+  document.getElementById('pb').style.width=(n/total*100)+'%';
+  document.querySelectorAll('.slide.on .ast>*').forEach(el=>{
+    el.style.animation='none'; el.offsetHeight; el.style.animation='';
+  });
+}
+function next(){ show(cur+1); }
+function prev(){ show(cur-1); }
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key===' '){ e.preventDefault(); next(); }
+  if(e.key==='ArrowLeft'){ e.preventDefault(); prev(); }
+});
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.nav'))next();
+});
+show(1);
+
+setTimeout(()=>{
+  const ctx=document.getElementById('wc');
+  if(!ctx)return;
+  new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:['STRING','LIST','HASH','SET','ZSET'],
+      datasets:[{
+        label:'Workers',
+        data:[4,2,2,2,2],
+        backgroundColor:['rgba(229,57,53,.85)','rgba(229,57,53,.5)','rgba(229,57,53,.5)','rgba(229,57,53,.5)','rgba(229,57,53,.5)'],
+        borderColor:'rgba(229,57,53,.9)',
+        borderWidth:1,borderRadius:6
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#888',font:{size:12}}},
+        y:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#888',stepSize:1},min:0,max:5}
+      }
+    }
+  });
+},400);
+</script>
+</body>
+</html>
